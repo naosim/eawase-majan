@@ -12,13 +12,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Sync files via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4
+        uses: SamKirkland/FTP-Deploy-Action@v4.4.0   # ← ここを v4 から v4.4.0に変更
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           server-dir: ${{ secrets.FTP_SERVER_DIR }}
-          # data/ ディレクトリ内の既存JSONやDB、設計書などはデプロイで上書き/削除しないように除外
           exclude: |
             .git/**
             .github/**
