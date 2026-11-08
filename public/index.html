@@ -5,17 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#123c31">
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="/assets/game.css">
+    <link rel="stylesheet" href="./assets/game.css">
     <title>絵合わせマージャン</title>
 </head>
 <body>
     <header class="topbar">
-        <a class="brand" href="/" aria-label="絵合わせマージャン">
+        <a class="brand" href="./index.html" aria-label="絵合わせマージャン">
             <span class="brand-mark">絵</span>
             <span>絵合わせマージャン</span>
         </a>
         <nav class="top-actions" aria-label="メニュー">
-            <a class="quiet-link" href="/editor.html">スキンエディタ</a>
+            <a class="quiet-link" href="./editor.html">スキンエディタ</a>
             <button id="skin-button" class="button button-quiet" type="button">スキン読込</button>
             <input id="skin-file" type="file" accept="application/json,.json" hidden>
         </nav>
@@ -211,7 +211,7 @@
         }
 
         async function api(action, values = {}) {
-            const response = await fetch('/action.php', {
+            const response = await fetch('./action.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action, player_uuid: uuid, ...values })
@@ -230,7 +230,8 @@
 
         function setRoomUrl(id) {
             roomId = id;
-            history.replaceState(null, '', `/?room=${encodeURIComponent(id)}`);
+            const appPath = new URL('.', location.href).pathname;
+            history.replaceState(null, '', `${appPath}?room=${encodeURIComponent(id)}`);
             $('#home-view').hidden = true;
             $('#room-view').hidden = false;
             $('#room-id-label').textContent = id;
@@ -267,7 +268,7 @@
         async function poll() {
             if (!roomId) return;
             try {
-                const response = await fetch(`/data/${encodeURIComponent(roomId)}.json?_=${Date.now()}`, { cache: 'no-store' });
+                const response = await fetch(`./data/${encodeURIComponent(roomId)}.json?_=${Date.now()}`, { cache: 'no-store' });
                 if (!response.ok) throw new Error(response.status === 404 ? 'ルームが見つかりません。' : '対局状態を取得できません。');
                 const previousKey = roomState && myPlayer
                     ? `${roomState.status}|${roomState.current_turn_seat}|${roomState.turn_has_drawn}|${myPlayer.encrypted_hand}`
@@ -611,7 +612,8 @@
         $('#start-game').addEventListener('click', () => performAction('start_game'));
         $('#copy-invite').addEventListener('click', async () => {
             try {
-                await navigator.clipboard.writeText(`${location.origin}/?room=${encodeURIComponent(roomId)}`);
+                const appPath = new URL('.', location.href).pathname;
+                await navigator.clipboard.writeText(`${location.origin}${appPath}?room=${encodeURIComponent(roomId)}`);
                 $('#copy-invite').textContent = 'コピーしました';
                 setTimeout(() => { $('#copy-invite').textContent = '招待リンクをコピー'; }, 1800);
             } catch {
@@ -620,7 +622,7 @@
         });
         $('#leave-room').addEventListener('click', () => {
             if (pollTimer) clearInterval(pollTimer);
-            history.replaceState(null, '', '/');
+            history.replaceState(null, '', new URL('.', location.href).pathname);
             roomId = null;
             roomState = null;
             $('#room-view').hidden = true;

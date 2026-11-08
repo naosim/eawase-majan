@@ -3,7 +3,23 @@ declare(strict_types=1);
 
 function openGameDatabase(): PDO
 {
-    $databasePath = getenv('DONJARA_DB_PATH') ?: __DIR__ . '/data/donjara.db';
+    $databasePath = getenv('DONJARA_DB_PATH');
+    if ($databasePath === false || $databasePath === '') {
+        $documentRoot = realpath($_SERVER['DOCUMENT_ROOT'] ?? '') ?: null;
+        $applicationRoot = basename(__DIR__) === '_app' ? dirname(__DIR__) : __DIR__;
+        $webRootContainsApplication = $documentRoot !== null
+            && str_starts_with(
+                $applicationRoot . DIRECTORY_SEPARATOR,
+                rtrim($documentRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR
+            );
+        if ($webRootContainsApplication) {
+            $privateDataDirectory = dirname($documentRoot)
+                . '/.donjara-data-' . substr(hash('sha256', $applicationRoot), 0, 12);
+            $databasePath = $privateDataDirectory . '/donjara.db';
+        } else {
+            $databasePath = __DIR__ . '/data/donjara.db';
+        }
+    }
     $dataDirectory = dirname($databasePath);
     if (!is_dir($dataDirectory) && !mkdir($dataDirectory, 0770, true) && !is_dir($dataDirectory)) {
         throw new RuntimeException('Could not create the data directory.');

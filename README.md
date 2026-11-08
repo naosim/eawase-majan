@@ -26,6 +26,12 @@ sudo apt install php8.3-cli php8.3-sqlite3
 
 このPHPビルトインサーバーは開発専用です。インターネットに公開しないでください。
 
+## さくらのレンタルサーバーへのデプロイ
+
+GitHub Actionsのデプロイは `public/` の中身をFTPの `FTP_SERVER_DIR` 直下に配置し、PHP補助ファイルを `_app/` に配置します。`FTP_SERVER_DIR` を公開したい `/donjara/` ディレクトリに設定すると、`https://<ドメイン>/donjara/` で開けます。HTML・API・CSS・対局状態ファイルはサブディレクトリからの相対パスで参照します。
+
+SQLite DBは公開ディレクトリの親に作成します。PHP実行ユーザーがその親ディレクトリに書き込めることと、PHP 8.3およびPDO SQLiteが有効であることが必要です。デプロイ後は `https://<ドメイン>/donjara/health.php` が `status: ok` を返すか確認してください。
+
 ## 遊び方
 
 1. プレイヤー名を入力してルームを作成します。
@@ -61,6 +67,7 @@ sudo apt install php8.3-cli php8.3-sqlite3
 ```bash
 php tests/game_rules.php
 tests/integration.sh
+tests/deployment_layout.sh
 ```
 
-統合テストは一時SQLite DBと一時HTTPサーバーを使用し、ルーム作成、暗号化、ツモ、タイムアウト、リーチ、ロンを検証します。
+統合テストは一時SQLite DBと一時HTTPサーバーを使用し、ルーム作成、暗号化、ツモ、タイムアウト、リーチ、ロン、サブディレクトリへのデプロイ構成を検証します。

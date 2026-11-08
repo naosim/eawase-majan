@@ -1,7 +1,10 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/../game.php';
+$gameFile = is_file(__DIR__ . '/_app/game.php')
+    ? __DIR__ . '/_app/game.php'
+    : __DIR__ . '/../game.php';
+require_once $gameFile;
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Allow: POST');

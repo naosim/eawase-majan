@@ -1,7 +1,10 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/../db_init.php';
+$databaseBootstrap = is_file(__DIR__ . '/_app/db_init.php')
+    ? __DIR__ . '/_app/db_init.php'
+    : __DIR__ . '/../db_init.php';
+require_once $databaseBootstrap;
 
 $checks = [
     'php' => version_compare(PHP_VERSION, '8.3.0', '>='),

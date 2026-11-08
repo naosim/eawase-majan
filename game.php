@@ -445,7 +445,10 @@ function publishRoomState(PDO $db, string $roomId): void
         $state,
         JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_THROW_ON_ERROR
     );
-    $directory = __DIR__ . '/public/data';
+    $publicDirectory = is_dir(__DIR__ . '/public')
+        ? __DIR__ . '/public'
+        : dirname(__DIR__);
+    $directory = $publicDirectory . '/data';
     if (!is_dir($directory) && !mkdir($directory, 0770, true) && !is_dir($directory)) {
         throw new RuntimeException('Could not create the public data directory.');
     }
