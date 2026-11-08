@@ -1,0 +1,26 @@
+name: Deploy to Sakura Server
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Sync files via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          server-dir: ${{ secrets.FTP_SERVER_DIR }}
+          # data/ ディレクトリ内の既存JSONやDB、設計書などはデプロイで上書き/削除しないように除外
+          exclude: |
+            .git/**
+            .github/**
+            design_spec.md
+            data/**

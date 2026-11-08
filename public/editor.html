@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#123c31">
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="./assets/editor.css">
+    <title>スキンエディタ - 絵合わせマージャン</title>
+</head>
+<body>
+    <header class="topbar">
+        <a class="brand" href="/">
+            <span class="brand-mark">絵</span>
+            <span>絵合わせマージャン</span>
+        </a>
+        <a class="back-link" href="./index.html">ゲームに戻る</a>
+    </header>
+    <main>
+        <section class="intro">
+            <p class="eyebrow">CUSTOMIZE YOUR TILES</p>
+            <h1>静的スキンエディタ</h1>
+            <p>スプライトシート画像を読み込み、牌の切り出し位置を設定して、ゲームで使えるJSONを作成します。データはブラウザ内だけで処理されます。</p>
+        </section>
+
+        <div class="editor-grid">
+            <section class="panel metadata-panel">
+                <h2>スキン情報</h2>
+                <label>スキンID<input id="skin-id" value="custom_skin" maxlength="40"></label>
+                <label>スキン名<input id="skin-name" value="カスタムスキン" maxlength="80"></label>
+                <label>作者<input id="skin-author" maxlength="80"></label>
+                <label>説明<textarea id="skin-description" rows="3" maxlength="300"></textarea></label>
+                <div class="size-row">
+                    <label>牌幅 (px)<input id="tile-width" type="number" min="1" max="512" value="64"></label>
+                    <label>牌高 (px)<input id="tile-height" type="number" min="1" max="512" value="64"></label>
+                </div>
+                <div class="button-row">
+                    <button id="export" class="button button-primary" type="button">JSONを書き出す</button>
+                    <button id="import-button" class="button button-secondary" type="button">JSONを読み込む</button>
+                    <input id="import-file" type="file" accept="application/json,.json" hidden>
+                </div>
+                <p id="editor-message" class="message" role="status"></p>
+            </section>
+
+            <section class="panel image-panel">
+                <div class="panel-heading">
+                    <div><h2>スプライトシート</h2><p>画像を選び、牌の左上をクリックしてください。</p></div>
+                    <label class="button button-secondary file-button">画像を選択<input id="image-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+                </div>
+                <div id="canvas-container"><canvas id="sheet-canvas" aria-label="スプライトシート"></canvas>
+                    <span id="canvas-placeholder">画像を選択すると、ここに表示されます。</span>
+                </div>
+                <p id="image-dimensions" class="image-dimensions"></p>
+                <div class="selected-coordinate">
+                    選択座標 <strong id="selected-coordinate">X: 0 / Y: 0</strong>
+                </div>
+            </section>
+
+            <section class="panel tile-form-panel">
+                <h2>牌の定義</h2>
+                <div class="tile-form-grid">
+                    <label>牌ID<input id="tile-id" value="A1" maxlength="8" placeholder="A1"></label>
+                    <label>牌名<input id="tile-name" value="ライオン" maxlength="40"></label>
+                    <label>カテゴリ<input id="tile-category" value="赤" maxlength="40"></label>
+                    <label>X座標<input id="tile-x" type="number" min="0" value="0"></label>
+                    <label>Y座標<input id="tile-y" type="number" min="0" value="0"></label>
+                </div>
+                <label class="checkbox-label"><input id="tile-wildcard" type="checkbox"> オールマイティ牌</label>
+                <button id="add-tile" class="button button-primary" type="button">牌を追加・更新</button>
+            </section>
+
+            <section class="panel tile-list-panel">
+                <div class="panel-heading">
+                    <div><h2>登録済みの牌</h2><p><span id="tile-count">0</span> 種類</p></div>
+                    <button id="clear-tiles" class="button button-quiet" type="button">すべて削除</button>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>牌ID</th><th>牌名</th><th>カテゴリ</th><th>座標</th><th>種類</th><th></th></tr></thead>
+                        <tbody id="tile-list"></tbody>
+                    </table>
+                </div>
+                <p class="hint">ゲームの既定牌は A1〜C3 と J1〜J2 です。スキンに同じIDを登録すると、その牌の絵柄が表示されます。</p>
+            </section>
+        </div>
+    </main>
+    <footer>画像・スキンデータはこのブラウザ内で処理されます。</footer>
+    <script type="module">
+        const $ = (selector) => document.querySelector(selector);
+        const canvas = $('#sheet-canvas');
+        const context = canvas.getContext('2d');
+        const tiles = {};
+        let sheetImage = '';
+        let loadedImage = null;
+        let selected = { x: 0, y: 0 };
+
+        function setMessage(text, isError = false) {
+            const message = $('#editor-message');
+            message.textContent = text;
+            message.classList.toggle('is-error', isError);
+        }
+
+        function dimensions() {
+            const width = Number($('#tile-width').value);
+            const height = Number($('#tile-height').value);
+            if (!Number.isInteger(width) || width < 1 || width > 512
+                || !Number.isInteger(height) || height < 1 || height > 512) {
+                throw new Error('牌幅・牌高は1〜512の整数で入力してください。');
+            }
+            return { width, height };
+        }
+
+        function drawCanvas() {
+            if (!loadedImage) return;
+            canvas.width = loadedImage.naturalWidth;
+            canvas.height = loadedImage.naturalHeight;
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            context.drawImage(loadedImage, 0, 0);
+            const { width, height } = dimensions();
+            context.save();
+            context.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+            context.lineWidth = Math.max(1, canvas.width / 800);
+            context.setLineDash([6, 4]);
+            for (const tile of Object.values(tiles)) {
+                context.strokeRect(tile.x + 1, tile.y + 1, width - 2, height - 2);
+            }
+            context.strokeStyle = '#d45f44';
+            context.lineWidth = Math.max(2, canvas.width / 500);
+            context.setLineDash([]);
+            context.strokeRect(selected.x + 1, selected.y + 1, width - 2, height - 2);
+            context.restore();
+        }
+
+        async function readImage(dataUrl) {
+            if (!/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z\d+/]+=*$/i.test(dataUrl)) {
+                throw new Error('PNG/JPEG/WebP/GIFの画像データを選択してください。');
+            }
+            const image = new Image();
+            await new Promise((resolve, reject) => {
+                image.onload = resolve;
+                image.onerror = () => reject(new Error('画像を読み込めませんでした。'));
+                image.src = dataUrl;
+            });
+            if (image.naturalWidth > 8192 || image.naturalHeight > 8192) {
+                throw new Error('画像の縦横は8192px以下にしてください。');
+            }
+            sheetImage = dataUrl;
+            loadedImage = image;
+            $('#canvas-placeholder').hidden = true;
+            $('#image-dimensions').textContent = `${image.naturalWidth} × ${image.naturalHeight} px`;
+            drawCanvas();
+        }
+
+        function renderTiles() {
+            const body = $('#tile-list');
+            body.replaceChildren();
+            for (const [id, tile] of Object.entries(tiles).sort(([a], [b]) => a.localeCompare(b))) {
+                const row = document.createElement('tr');
+                for (const value of [
+                    id,
+                    tile.name,
+                    tile.category || '—',
+                    `${tile.x}, ${tile.y}`,
+                    tile.is_wildcard ? 'オールマイティ' : '通常'
+                ]) {
+                    const cell = document.createElement('td');
+                    cell.textContent = value;
+                    row.append(cell);
+                }
+                const actions = document.createElement('td');
+                actions.className = 'row-actions';
+                const edit = document.createElement('button');
+                edit.type = 'button';
+                edit.className = 'table-action';
+                edit.textContent = '編集';
+                edit.addEventListener('click', () => {
+                    $('#tile-id').value = id;
+                    $('#tile-name').value = tile.name;
+                    $('#tile-category').value = tile.category || '';
+                    $('#tile-x').value = tile.x;
+                    $('#tile-y').value = tile.y;
+                    $('#tile-wildcard').checked = Boolean(tile.is_wildcard);
+                    selected = { x: tile.x, y: tile.y };
+                    $('#selected-coordinate').textContent = `X: ${selected.x} / Y: ${selected.y}`;
+                    drawCanvas();
+                });
+                const remove = document.createElement('button');
+                remove.type = 'button';
+                remove.className = 'table-action is-delete';
+                remove.textContent = '削除';
+                remove.addEventListener('click', () => {
+                    delete tiles[id];
+                    renderTiles();
+                    drawCanvas();
+                });
+                actions.append(edit, remove);
+                row.append(actions);
+                body.append(row);
+            }
+            $('#tile-count').textContent = String(Object.keys(tiles).length);
+        }
+
+        function setSelected(x, y) {
+            const { width, height } = dimensions();
+            selected = {
+                x: Math.floor(x / width) * width,
+                y: Math.floor(y / height) * height
+            };
+            $('#tile-x').value = selected.x;
+            $('#tile-y').value = selected.y;
+            $('#selected-coordinate').textContent = `X: ${selected.x} / Y: ${selected.y}`;
+            drawCanvas();
+        }
+
+        function skinData() {
+            const { width, height } = dimensions();
+            const skinId = $('#skin-id').value.trim();
+            if (!/^[a-zA-Z0-9_-]{1,40}$/.test(skinId)) {
+                throw new Error('スキンIDは英数字・ハイフン・アンダースコアで入力してください。');
+            }
+            if (!sheetImage) throw new Error('先にスプライトシート画像を選んでください。');
+            if (Object.keys(tiles).length === 0) throw new Error('牌を1種類以上登録してください。');
+            return {
+                skin_id: skinId,
+                skin_name: $('#skin-name').value.trim() || skinId,
+                author: $('#skin-author').value.trim(),
+                description: $('#skin-description').value.trim(),
+                sheet_image: sheetImage,
+                tile_size: { width, height },
+                tiles
+            };
+        }
+
+        function importSkin(data) {
+            if (!data || typeof data !== 'object' || !data.tile_size
+                || !Number.isInteger(data.tile_size.width) || !Number.isInteger(data.tile_size.height)
+                || !data.tiles || typeof data.tiles !== 'object' || Array.isArray(data.tiles)
+                || typeof data.sheet_image !== 'string') {
+                throw new Error('スキンJSONの形式が正しくありません。');
+            }
+            const { width, height } = data.tile_size;
+            if (width < 1 || height < 1 || width > 512 || height > 512) {
+                throw new Error('牌サイズは1〜512pxで指定してください。');
+            }
+            $('#skin-id').value = String(data.skin_id || 'custom_skin');
+            $('#skin-name').value = String(data.skin_name || '');
+            $('#skin-author').value = String(data.author || '');
+            $('#skin-description').value = String(data.description || '');
+            $('#tile-width').value = String(width);
+            $('#tile-height').value = String(height);
+            for (const key of Object.keys(tiles)) delete tiles[key];
+            for (const [id, tile] of Object.entries(data.tiles)) {
+                if (!/^[A-Z]\d{1,2}$/.test(id) || !tile || typeof tile.name !== 'string'
+                    || !Number.isInteger(tile.x) || !Number.isInteger(tile.y)
+                    || tile.x < 0 || tile.y < 0) {
+                    throw new Error(`牌「${id}」の定義が正しくありません。`);
+                }
+                tiles[id] = {
+                    name: tile.name,
+                    category: typeof tile.category === 'string' ? tile.category : '',
+                    x: tile.x,
+                    y: tile.y,
+                    is_wildcard: Boolean(tile.is_wildcard)
+                };
+            }
+            selected = { x: 0, y: 0 };
+            $('#selected-coordinate').textContent = 'X: 0 / Y: 0';
+            renderTiles();
+            return readImage(data.sheet_image);
+        }
+
+        canvas.addEventListener('click', (event) => {
+            if (!loadedImage) return;
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            setSelected((event.clientX - rect.left) * scaleX, (event.clientY - rect.top) * scaleY);
+        });
+
+        $('#image-file').addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            if (file.size > 3 * 1024 * 1024) {
+                setMessage('画像は3MB以下にしてください。', true);
+                return;
+            }
+            try {
+                await readImage(await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = () => reject(new Error('画像ファイルを読み込めませんでした。'));
+                    reader.readAsDataURL(file);
+                }));
+                setMessage('画像を読み込みました。牌の位置をクリックしてください。');
+            } catch (error) {
+                setMessage(error.message, true);
+            } finally {
+                event.target.value = '';
+            }
+        });
+
+        $('#tile-x').addEventListener('input', () => {
+            selected = { x: Number($('#tile-x').value) || 0, y: Number($('#tile-y').value) || 0 };
+            $('#selected-coordinate').textContent = `X: ${selected.x} / Y: ${selected.y}`;
+            drawCanvas();
+        });
+        $('#tile-y').addEventListener('input', () => {
+            selected = { x: Number($('#tile-x').value) || 0, y: Number($('#tile-y').value) || 0 };
+            $('#selected-coordinate').textContent = `X: ${selected.x} / Y: ${selected.y}`;
+            drawCanvas();
+        });
+        $('#tile-width').addEventListener('change', drawCanvas);
+        $('#tile-height').addEventListener('change', drawCanvas);
+        $('#add-tile').addEventListener('click', () => {
+            const id = $('#tile-id').value.trim();
+            const name = $('#tile-name').value.trim();
+            const x = Number($('#tile-x').value);
+            const y = Number($('#tile-y').value);
+            try {
+                dimensions();
+                if (!/^[A-Z]\d{1,2}$/.test(id)) throw new Error('牌IDは A1 のような英大文字+数字で入力してください。');
+                if (!name) throw new Error('牌名を入力してください。');
+                if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0) {
+                    throw new Error('座標は0以上の整数で入力してください。');
+                }
+                if (loadedImage && (x + Number($('#tile-width').value) > canvas.width
+                    || y + Number($('#tile-height').value) > canvas.height)) {
+                    throw new Error('切り出し範囲が画像の外に出ています。');
+                }
+                tiles[id] = {
+                    name,
+                    category: $('#tile-category').value.trim(),
+                    x,
+                    y,
+                    is_wildcard: $('#tile-wildcard').checked
+                };
+                renderTiles();
+                drawCanvas();
+                setMessage(`${id} を登録しました。`);
+            } catch (error) {
+                setMessage(error.message, true);
+            }
+        });
+        $('#clear-tiles').addEventListener('click', () => {
+            for (const key of Object.keys(tiles)) delete tiles[key];
+            renderTiles();
+            drawCanvas();
+        });
+        $('#export').addEventListener('click', () => {
+            try {
+                const data = skinData();
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `${data.skin_id}.json`;
+                link.click();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                setMessage('スキンJSONを書き出しました。ゲーム画面の「スキン読込」から読み込めます。');
+            } catch (error) {
+                setMessage(error.message, true);
+            }
+        });
+        $('#import-button').addEventListener('click', () => $('#import-file').click());
+        $('#import-file').addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            try {
+                if (file.size > 5 * 1024 * 1024) throw new Error('スキンJSONは5MB以下にしてください。');
+                await importSkin(JSON.parse(await file.text()));
+                setMessage('スキンJSONを読み込みました。');
+            } catch (error) {
+                setMessage(error.message, true);
+            } finally {
+                event.target.value = '';
+            }
+        });
+        renderTiles();
+    </script>
+</body>
+</html>

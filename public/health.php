@@ -1,11 +1,20 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/../db_init.php';
+
 $checks = [
     'php' => version_compare(PHP_VERSION, '8.3.0', '>='),
     'pdo_sqlite' => extension_loaded('pdo_sqlite'),
     'json_validate' => function_exists('json_validate'),
 ];
+try {
+    openGameDatabase();
+    $checks['database'] = true;
+} catch (Throwable $error) {
+    error_log('Health check could not open the database: ' . $error->getMessage());
+    $checks['database'] = false;
+}
 $ready = !in_array(false, $checks, true);
 
 http_response_code($ready ? 200 : 503);

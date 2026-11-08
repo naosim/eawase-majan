@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#123c31">
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="/assets/game.css">
+    <title>絵合わせマージャン</title>
+</head>
+<body>
+    <header class="topbar">
+        <a class="brand" href="/" aria-label="絵合わせマージャン">
+            <span class="brand-mark">絵</span>
+            <span>絵合わせマージャン</span>
+        </a>
+        <nav class="top-actions" aria-label="メニュー">
+            <a class="quiet-link" href="/editor.html">スキンエディタ</a>
+            <button id="skin-button" class="button button-quiet" type="button">スキン読込</button>
+            <input id="skin-file" type="file" accept="application/json,.json" hidden>
+        </nav>
+    </header>
+
+    <main>
+        <section id="home-view" class="home-view">
+            <div class="home-copy">
+                <p class="eyebrow">ONLINE TILE GAME</p>
+                <h1>絵をそろえて、<br>みんなで遊ぼう。</h1>
+                <p class="intro">
+                    9枚の牌で3つの刻子を作り、リーチをかけて上がりを目指そう。
+                    ルームURLを共有すれば、2〜4人で遊べます。
+                </p>
+                <div class="rule-pills">
+                    <span>2〜4人対戦</span><span>リーチで上がり</span><span>オールマイティ2枚</span>
+                </div>
+            </div>
+            <div class="lobby-card">
+                <label class="field-label" for="player-name">プレイヤー名</label>
+                <input id="player-name" class="text-field" maxlength="20" autocomplete="nickname" placeholder="名前を入力">
+                <button id="create-room" class="button button-primary button-wide" type="button">ルームを作成</button>
+                <div class="divider"><span>または</span></div>
+                <form id="join-form">
+                    <label class="field-label" for="room-code">招待コード</label>
+                    <div class="join-row">
+                        <input id="room-code" class="text-field" maxlength="17" placeholder="room_abc123..." autocomplete="off">
+                        <button class="button button-secondary" type="submit">参加</button>
+                    </div>
+                </form>
+                <p class="card-footnote">作成者が2人以上集まったら対局を開始できます。</p>
+                <p id="home-error" class="error-message" role="alert" hidden></p>
+            </div>
+        </section>
+
+        <section id="room-view" class="room-view" hidden>
+            <div class="room-heading">
+                <div>
+                    <p class="eyebrow">ROOM <span id="room-id-label"></span></p>
+                    <h1 id="room-title">対局ルーム</h1>
+                </div>
+                <div class="room-actions">
+                    <button id="copy-invite" class="button button-secondary" type="button">招待リンクをコピー</button>
+                    <button id="leave-room" class="button button-quiet" type="button">退出</button>
+                </div>
+            </div>
+
+            <div id="lobby-panel" class="lobby-panel" hidden>
+                <div class="panel-heading">
+                    <div>
+                        <p class="eyebrow">WAITING ROOM</p>
+                        <h2>プレイヤーを待っています</h2>
+                    </div>
+                    <button id="start-game" class="button button-primary" type="button" hidden>対局開始</button>
+                </div>
+                <div id="lobby-players" class="lobby-players"></div>
+                <p class="muted-copy">招待リンクを共有してください。参加できるのは最大4人です。</p>
+            </div>
+
+            <div id="game-panel" class="game-panel" hidden>
+                <div id="game-message" class="game-message" aria-live="polite"></div>
+                <div class="board-layout">
+                    <section class="table-panel" aria-label="対局状況">
+                        <div class="table-topline">
+                            <span id="round-status" class="round-status"></span>
+                            <span>残り <strong id="remaining-tiles">0</strong> 枚</span>
+                        </div>
+                        <div id="player-seats" class="player-seats"></div>
+                        <div class="discard-area">
+                            <div class="discard-title">捨て牌 <span id="riichi-pot"></span></div>
+                            <div id="discard-pile" class="discard-pile" aria-label="プレイヤー別の捨て牌"></div>
+                        </div>
+                    </section>
+
+                    <aside class="side-panel">
+                        <div class="turn-card">
+                            <span class="turn-indicator"></span>
+                            <div>
+                                <span class="eyebrow">YOUR STATUS</span>
+                                <strong id="turn-label">状態を確認中</strong>
+                            </div>
+                            <span id="deadline-label" class="deadline-label"></span>
+                        </div>
+                        <div id="meld-area" class="meld-area"></div>
+                        <div class="hand-heading">
+                            <h2>あなたの手牌</h2>
+                            <span id="hand-count" class="muted-copy"></span>
+                        </div>
+                        <div id="my-hand" class="hand-container"></div>
+                        <label id="riichi-option" class="riichi-option" hidden>
+                            <input id="declare-riichi" type="checkbox">
+                            <span><strong>リーチ宣言</strong><small>テンパイ・1,000点が必要です</small></span>
+                        </label>
+                        <div id="game-controls" class="game-controls"></div>
+                    </aside>
+                </div>
+            </div>
+            <p id="room-error" class="error-message" role="alert" hidden></p>
+        </section>
+    </main>
+    <footer class="footer">
+        <span>PHP 8.3 · SQLite · 静的JSONポーリング</span>
+        <span>ローカル開発用</span>
+    </footer>
+
+    <script type="module">
+        const TILE_IDS = ['A1', 'A2', 'A3', 'B1', 'B2', 'B3', 'C1', 'C2', 'C3'];
+        const WILDCARDS = ['J1', 'J2'];
+        const TILE_NAMES = {
+            A1: 'ライオン', A2: 'ゾウ', A3: 'キリン',
+            B1: 'パンダ', B2: 'サル', B3: 'ウサギ',
+            C1: 'りんご', C2: 'ぶどう', C3: 'さくらんぼ',
+            J1: 'オールマイティ', J2: 'オールマイティ'
+        };
+        const TAG = 'donjara_uuid';
+        const $ = (selector) => document.querySelector(selector);
+        const uuid = getPlayerUuid();
+        let roomId = new URLSearchParams(location.search).get('room');
+        let roomState = null;
+        let myPlayer = null;
+        let myHand = [];
+        let playerTag = '';
+        let skin = loadStoredSkin();
+        let selectedTile = null;
+        let pollTimer = null;
+        let clockTimer = null;
+        let timeoutPending = false;
+        let pollFailed = false;
+        let busy = false;
+
+        function getPlayerUuid() {
+            let value = localStorage.getItem(TAG);
+            if (!value) {
+                if (!crypto.randomUUID) {
+                    throw new Error('このブラウザではUUIDを生成できません。最新のブラウザを使用してください。');
+                }
+                value = crypto.randomUUID();
+                localStorage.setItem(TAG, value);
+            }
+            return value;
+        }
+
+        function loadStoredSkin() {
+            try {
+                const raw = localStorage.getItem('donjara_skin');
+                return raw ? validateSkin(JSON.parse(raw)) : null;
+            } catch (error) {
+                console.error('保存済みスキンを読み込めませんでした:', error);
+                return null;
+            }
+        }
+
+        function validateSkin(value) {
+            if (!value || typeof value !== 'object' || !value.tiles || typeof value.tiles !== 'object') {
+                throw new Error('スキンJSONの形式が正しくありません。');
+            }
+            const size = value.tile_size;
+            if (!size || !Number.isInteger(size.width) || !Number.isInteger(size.height)
+                || size.width < 1 || size.height < 1 || size.width > 512 || size.height > 512) {
+                throw new Error('牌サイズは1〜512pxで指定してください。');
+            }
+            if (value.sheet_image && !/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z\d+/]+=*$/i.test(value.sheet_image)) {
+                throw new Error('画像はPNG/JPEG/WebP/GIFのBase64データにしてください。');
+            }
+            for (const [id, tile] of Object.entries(value.tiles)) {
+                if (!/^[A-Z]\d{1,2}$/.test(id) || !tile || typeof tile.name !== 'string'
+                    || !Number.isInteger(tile.x) || !Number.isInteger(tile.y)
+                    || tile.x < 0 || tile.y < 0) {
+                    throw new Error(`牌「${id}」の定義を確認してください。`);
+                }
+            }
+            return value;
+        }
+
+        async function sha256(value) {
+            const bytes = new TextEncoder().encode(value);
+            const digest = await crypto.subtle.digest('SHA-256', bytes);
+            return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function decryptHand(encrypted) {
+            const keyText = (await sha256(uuid)).slice(0, 16);
+            const ivText = (await sha256('donjara-salt-8.3')).slice(0, 16);
+            const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(keyText), 'AES-CBC', false, ['decrypt']);
+            const cipherText = Uint8Array.from(atob(encrypted), (char) => char.charCodeAt(0));
+            const plain = await crypto.subtle.decrypt({ name: 'AES-CBC', iv: new TextEncoder().encode(ivText) }, key, cipherText);
+            return JSON.parse(new TextDecoder().decode(plain));
+        }
+
+        function showError(element, message) {
+            element.textContent = message;
+            element.hidden = !message;
+        }
+
+        async function api(action, values = {}) {
+            const response = await fetch('/action.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, player_uuid: uuid, ...values })
+            });
+            let result;
+            try {
+                result = await response.json();
+            } catch {
+                throw new Error('サーバーから正しい応答がありません。');
+            }
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || '操作に失敗しました。');
+            }
+            return result;
+        }
+
+        function setRoomUrl(id) {
+            roomId = id;
+            history.replaceState(null, '', `/?room=${encodeURIComponent(id)}`);
+            $('#home-view').hidden = true;
+            $('#room-view').hidden = false;
+            $('#room-id-label').textContent = id;
+            $('#room-code').value = id;
+            $('#room-error').hidden = true;
+            if (pollTimer) clearInterval(pollTimer);
+            poll();
+            pollTimer = setInterval(poll, 2000);
+        }
+
+        async function createRoom() {
+            const name = $('#player-name').value.trim();
+            if (!name) return showError($('#home-error'), 'プレイヤー名を入力してください。');
+            localStorage.setItem('donjara_name', name);
+            try {
+                const result = await api('create_room', { name });
+                setRoomUrl(result.room_id);
+            } catch (error) {
+                showError($('#home-error'), error.message);
+            }
+        }
+
+        async function joinRoom(id) {
+            if (!/^room_[a-f0-9]{12}$/.test(id)) {
+                throw new Error('招待コードを確認してください。');
+            }
+            const name = $('#player-name').value.trim() || localStorage.getItem('donjara_name') || '';
+            if (!name) throw new Error('プレイヤー名を入力してください。');
+            localStorage.setItem('donjara_name', name);
+            await api('join_room', { room_id: id, name });
+            setRoomUrl(id);
+        }
+
+        async function poll() {
+            if (!roomId) return;
+            try {
+                const response = await fetch(`/data/${encodeURIComponent(roomId)}.json?_=${Date.now()}`, { cache: 'no-store' });
+                if (!response.ok) throw new Error(response.status === 404 ? 'ルームが見つかりません。' : '対局状態を取得できません。');
+                const previousKey = roomState && myPlayer
+                    ? `${roomState.status}|${roomState.current_turn_seat}|${roomState.turn_has_drawn}|${myPlayer.encrypted_hand}`
+                    : null;
+                const nextState = await response.json();
+                playerTag = await sha256(uuid);
+                const nextPlayer = nextState.players.find((player) => player.player_tag === playerTag) || null;
+                const nextKey = nextPlayer
+                    ? `${nextState.status}|${nextState.current_turn_seat}|${nextState.turn_has_drawn}|${nextPlayer.encrypted_hand}`
+                    : null;
+                if (previousKey !== nextKey) {
+                    selectedTile = null;
+                    $('#declare-riichi').checked = false;
+                }
+                roomState = nextState;
+                myPlayer = nextPlayer;
+                myHand = myPlayer ? await decryptHand(myPlayer.encrypted_hand) : [];
+                if (!Array.isArray(myHand)) throw new Error('手牌データが正しくありません。');
+                selectedTile = selectedTile !== null && selectedTile < myHand.length ? selectedTile : null;
+                if (!myPlayer) {
+                    showError($('#room-error'), 'このルームに参加していません。トップページから招待コードで参加してください。');
+                } else if (pollFailed) {
+                    showError($('#room-error'), '');
+                    pollFailed = false;
+                }
+                render();
+                if (['playing', 'ron_wait'].includes(roomState.status)
+                    && roomState.deadline_at <= Math.floor(Date.now() / 1000) && !timeoutPending) {
+                    timeoutPending = true;
+                    api('advance_timeout', { room_id: roomId })
+                        .catch((error) => showError($('#room-error'), error.message))
+                        .finally(() => { timeoutPending = false; poll(); });
+                }
+            } catch (error) {
+                pollFailed = true;
+                showError($('#room-error'), error.message);
+            }
+        }
+
+        function makeTile(tileId, { clickable = false, index = -1, selected = false } = {}) {
+            const tile = skin?.tiles?.[tileId];
+            const element = document.createElement(clickable ? 'button' : 'span');
+            element.className = `tile${tileId.startsWith('J') ? ' tile-wild' : ''}${selected ? ' is-selected' : ''}`;
+            if (clickable) {
+                element.type = 'button';
+                element.setAttribute('aria-label', `${tile?.name || TILE_NAMES[tileId] || tileId}を選択`);
+                element.setAttribute('aria-pressed', String(selected));
+                element.addEventListener('click', () => {
+                    selectedTile = selectedTile === index ? null : index;
+                    render();
+                });
+            }
+            const label = tile?.name || TILE_NAMES[tileId] || tileId;
+            element.title = `${label} (${tileId})`;
+            if (skin?.sheet_image && tile) {
+                element.classList.add('sprite-tile');
+                element.style.width = `${skin.tile_size.width}px`;
+                element.style.height = `${skin.tile_size.height}px`;
+                element.style.backgroundImage = `url("${skin.sheet_image}")`;
+                element.style.backgroundPosition = `-${tile.x}px -${tile.y}px`;
+                element.style.backgroundSize = 'auto';
+                element.textContent = '';
+                element.setAttribute('aria-label', `${label} (${tileId})`);
+            } else {
+                element.textContent = tile?.name || TILE_NAMES[tileId] || tileId;
+            }
+            return element;
+        }
+
+        function canWin(tiles) {
+            if (tiles.length !== 9) return false;
+            const counts = Object.fromEntries(TILE_IDS.map((id) => [id, 0]));
+            let wildcards = 0;
+            for (const tile of tiles) {
+                if (WILDCARDS.includes(tile)) wildcards++;
+                else if (Object.hasOwn(counts, tile)) counts[tile]++;
+                else return false;
+            }
+            const needed = Object.values(counts).reduce((sum, count) => sum + ((3 - count % 3) % 3), 0);
+            return needed <= wildcards && (wildcards - needed) % 3 === 0;
+        }
+
+        function isTenpai(hand, melds) {
+            if (hand.length + melds.length * 3 !== 8) return false;
+            return [...TILE_IDS, ...WILDCARDS].some((tile) => canWin([...hand, tile, ...melds.flat()]));
+        }
+
+        function hasPong(hand, tile) {
+            if (!tile || WILDCARDS.includes(tile)) return false;
+            return hand.filter((held) => held === tile).length
+                + hand.filter((held) => WILDCARDS.includes(held)).length >= 2;
+        }
+
+        function addPlayerCard(container, player, isMe) {
+            const card = document.createElement('article');
+            card.className = `player-card${player.seat_number === roomState.current_turn_seat && roomState.status === 'playing' ? ' is-active' : ''}${isMe ? ' is-me' : ''}`;
+            const top = document.createElement('div');
+            top.className = 'player-card-top';
+            const name = document.createElement('strong');
+            name.textContent = player.name + (isMe ? ' (あなた)' : '');
+            const seat = document.createElement('span');
+            seat.textContent = `席 ${player.seat_number + 1}`;
+            top.append(name, seat);
+            const score = document.createElement('div');
+            score.className = 'player-score';
+            score.textContent = `${player.score.toLocaleString()} 点${player.is_riichi ? ' · リーチ' : ''}`;
+            const tiles = document.createElement('div');
+            tiles.className = 'opponent-tiles';
+            if (isMe) {
+                for (const tileId of myHand) tiles.append(makeTile(tileId));
+            } else {
+                for (let i = 0; i < Math.min(player.hand_count, 9); i++) {
+                    const back = document.createElement('span');
+                    back.className = 'tile tile-back';
+                    back.textContent = '絵';
+                    tiles.append(back);
+                }
+            }
+            card.append(top, score, tiles);
+            if (!isMe && player.melds.length > 0) {
+                const melds = document.createElement('div');
+                melds.className = 'opponent-melds';
+                for (const meld of player.melds) {
+                    for (const tileId of meld) melds.append(makeTile(tileId));
+                }
+                card.append(melds);
+            }
+            container.append(card);
+        }
+
+        function renderLobby() {
+            $('#lobby-panel').hidden = false;
+            $('#game-panel').hidden = true;
+            const list = $('#lobby-players');
+            list.replaceChildren();
+            for (let seat = 0; seat < 4; seat++) {
+                const player = roomState.players.find((entry) => entry.seat_number === seat);
+                const item = document.createElement('div');
+                item.className = `lobby-seat${player ? ' occupied' : ''}`;
+                item.innerHTML = `<span class="seat-number">0${seat + 1}</span>`;
+                const label = document.createElement('strong');
+                label.textContent = player ? player.name : '参加待ち';
+                const state = document.createElement('span');
+                state.textContent = player ? '参加中' : '空席';
+                item.append(label, state);
+                list.append(item);
+            }
+            const canStart = roomState.players[0]?.player_tag === playerTag && roomState.players.length >= 2;
+            $('#start-game').hidden = !canStart;
+            $('#room-title').textContent = '対局開始を待っています';
+        }
+
+        function renderGame() {
+            $('#lobby-panel').hidden = true;
+            $('#game-panel').hidden = false;
+            $('#round-status').textContent = roomState.status === 'ron_wait'
+                ? 'ロン確認中'
+                : roomState.status === 'finished'
+                    ? (roomState.win_type === 'draw' ? '流局' : '対局終了')
+                    : '対局中';
+            const seats = $('#player-seats');
+            seats.replaceChildren();
+            for (const player of roomState.players) addPlayerCard(seats, player, player.player_tag === playerTag);
+
+            const river = $('#discard-pile');
+            river.replaceChildren();
+            const discardHistory = roomState.discard_history || [];
+            for (const player of roomState.players) {
+                const row = document.createElement('div');
+                row.className = 'discard-player-row';
+                const label = document.createElement('span');
+                label.className = 'discard-player-name';
+                label.textContent = `${player.name} · 席 ${player.seat_number + 1}`;
+                const tiles = document.createElement('div');
+                tiles.className = 'discard-player-tiles';
+                const playerDiscards = discardHistory.filter((discard) => discard.seat_number === player.seat_number);
+                for (const [index, discard] of playerDiscards.entries()) {
+                    const tile = makeTile(discard.tile_id);
+                    tile.classList.add('discarded-tile');
+                    tile.setAttribute('aria-label', `${player.name}が捨てた${TILE_NAMES[discard.tile_id] || discard.tile_id}`);
+                    tile.title = `${player.name}が捨てた牌: ${TILE_NAMES[discard.tile_id] || discard.tile_id} (${discard.tile_id})`;
+                    if (index === playerDiscards.length - 1) tile.classList.add('is-latest-discard');
+                    tiles.append(tile);
+                }
+                if (playerDiscards.length === 0) {
+                    const empty = document.createElement('span');
+                    empty.className = 'empty-river';
+                    empty.textContent = 'まだありません';
+                    tiles.append(empty);
+                }
+                row.append(label, tiles);
+                river.append(row);
+            }
+            $('#remaining-tiles').textContent = String(roomState.remaining_tiles);
+            $('#riichi-pot').textContent = roomState.riichi_pool ? ` · リーチ棒 ${roomState.riichi_pool}点` : '';
+            $('#hand-count').textContent = `${myHand.length}枚`;
+            $('#room-title').textContent = roomState.status === 'finished' ? '対局終了' : '対局中';
+
+            const meldArea = $('#meld-area');
+            meldArea.replaceChildren();
+            for (const meld of myPlayer.melds) {
+                const row = document.createElement('div');
+                row.className = 'meld-row';
+                const label = document.createElement('span');
+                label.textContent = 'ポン';
+                row.append(label);
+                for (const tileId of meld) row.append(makeTile(tileId));
+                meldArea.append(row);
+            }
+
+            const hand = $('#my-hand');
+            hand.replaceChildren();
+            const isMyTurn = roomState.status === 'playing' && roomState.current_turn_seat === myPlayer.seat_number;
+            const canDiscard = isMyTurn && roomState.turn_has_drawn;
+            myHand.forEach((tileId, index) => {
+                const tile = makeTile(tileId, {
+                    clickable: canDiscard && (!myPlayer.is_riichi || index === myHand.length - 1),
+                    index,
+                    selected: selectedTile === index
+                });
+                if (canDiscard && index === myHand.length - 1 && roomState.turn_has_drawn) tile.classList.add('is-drawn');
+                hand.append(tile);
+            });
+
+            const controls = $('#game-controls');
+            controls.replaceChildren();
+            const riichiOption = $('#riichi-option');
+            riichiOption.hidden = true;
+            const message = $('#game-message');
+            message.className = 'game-message';
+            message.textContent = '';
+            if (roomState.status === 'finished') {
+                message.classList.add('is-result');
+                const winner = roomState.players.find((player) => player.seat_number === roomState.winner_seat);
+                message.textContent = roomState.win_type === 'draw'
+                    ? '山札がなくなりました。今回は引き分けです。'
+                    : `${winner?.name || 'プレイヤー'}の${roomState.win_type === 'ron' ? 'ロン' : 'ツモ'}！対局終了`;
+                $('#turn-label').textContent = '対局終了';
+            } else if (roomState.status === 'ron_wait') {
+                const isTarget = roomState.ron_target_seat === myPlayer.seat_number;
+                if (isTarget) {
+                    message.classList.add('is-alert');
+                    message.textContent = 'ロンできます。上がるか、パスを選んでください。';
+                    addButton(controls, 'ロン', 'button-primary', () => performAction('claim_ron'));
+                    addButton(controls, 'パス', 'button-secondary', () => performAction('claim_pass'));
+                    $('#turn-label').textContent = 'ロン確認';
+                } else {
+                    const target = roomState.players.find((player) => player.seat_number === roomState.ron_target_seat);
+                    message.textContent = `${target?.name || 'プレイヤー'}のロン確認中です。`;
+                    $('#turn-label').textContent = 'ロン確認中';
+                }
+            } else if (isMyTurn) {
+                if (!roomState.turn_has_drawn && hasPong(myHand, roomState.pending_tile)) {
+                    addButton(controls, 'ポンする', 'button-secondary', () => performAction('claim_pong'));
+                }
+                if (!roomState.turn_has_drawn) {
+                    message.textContent = 'あなたの番です。牌を引くか、ポンしてください。';
+                    addButton(controls, '牌を引く', 'button-primary', () => performAction('draw_tile'));
+                    $('#turn-label').textContent = 'あなたの番';
+                } else if (myPlayer.is_riichi && canWin([...myHand, ...myPlayer.melds.flat()])) {
+                    message.classList.add('is-alert');
+                    message.textContent = '上がり形です。ツモを宣言できます。';
+                    addButton(controls, 'ツモ', 'button-primary', () => performAction('claim_tsumo'));
+                    $('#turn-label').textContent = 'ツモできます';
+                } else {
+                    const tenpai = selectedTile !== null
+                        ? isTenpai(myHand.filter((_, index) => index !== selectedTile), myPlayer.melds)
+                        : myHand.some((_, index) => isTenpai(myHand.filter((__, other) => other !== index), myPlayer.melds));
+                    riichiOption.hidden = myPlayer.is_riichi || !tenpai || myPlayer.score < 1000;
+                    message.textContent = myPlayer.is_riichi
+                        ? 'リーチ中です。引いた牌を選んで捨ててください。'
+                        : '捨てる牌を選んでください。テンパイならリーチできます。';
+                    const discard = addButton(controls, '選んだ牌を捨てる', 'button-primary', () => {
+                        if (selectedTile === null) return;
+                        performAction('discard_tile', {
+                            tile_index: selectedTile,
+                            declare_riichi: !riichiOption.hidden && $('#declare-riichi').checked
+                        });
+                    });
+                    discard.disabled = selectedTile === null;
+                    $('#turn-label').textContent = '捨て牌を選択';
+                }
+            } else {
+                message.textContent = 'ほかのプレイヤーの番です。';
+                $('#turn-label').textContent = '相手の番';
+            }
+            updateDeadlineLabel();
+        }
+
+        function addButton(container, label, style, action) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = `button ${style}`;
+            button.textContent = label;
+            button.addEventListener('click', action);
+            container.append(button);
+            return button;
+        }
+
+        function render() {
+            if (!roomState || !myPlayer) return;
+            $('#room-id-label').textContent = roomId;
+            if (roomState.status === 'lobby') renderLobby();
+            else renderGame();
+        }
+
+        async function performAction(action, values = {}) {
+            if (busy) return;
+            busy = true;
+            showError($('#room-error'), '');
+            try {
+                await api(action, { room_id: roomId, ...values });
+                await poll();
+            } catch (error) {
+                showError($('#room-error'), error.message);
+            } finally {
+                busy = false;
+            }
+        }
+
+        function updateDeadlineLabel() {
+            if (!roomState?.deadline_at) {
+                $('#deadline-label').textContent = '';
+                return;
+            }
+            const remaining = Math.max(0, roomState.deadline_at - Math.floor(Date.now() / 1000));
+            $('#deadline-label').textContent = `残り ${remaining}秒`;
+        }
+
+        $('#player-name').value = localStorage.getItem('donjara_name') || '';
+        $('#create-room').addEventListener('click', createRoom);
+        $('#join-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const id = $('#room-code').value.trim();
+            try {
+                await joinRoom(id);
+            } catch (error) {
+                showError($('#home-error'), error.message);
+            }
+        });
+        $('#start-game').addEventListener('click', () => performAction('start_game'));
+        $('#copy-invite').addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(`${location.origin}/?room=${encodeURIComponent(roomId)}`);
+                $('#copy-invite').textContent = 'コピーしました';
+                setTimeout(() => { $('#copy-invite').textContent = '招待リンクをコピー'; }, 1800);
+            } catch {
+                showError($('#room-error'), '招待リンクをコピーできません。アドレスバーからURLをコピーしてください。');
+            }
+        });
+        $('#leave-room').addEventListener('click', () => {
+            if (pollTimer) clearInterval(pollTimer);
+            history.replaceState(null, '', '/');
+            roomId = null;
+            roomState = null;
+            $('#room-view').hidden = true;
+            $('#home-view').hidden = false;
+        });
+        $('#skin-button').addEventListener('click', () => $('#skin-file').click());
+        $('#skin-file').addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            try {
+                if (file.size > 5 * 1024 * 1024) throw new Error('スキンJSONは5MB以下にしてください。');
+                skin = validateSkin(JSON.parse(await file.text()));
+                try {
+                    localStorage.setItem('donjara_skin', JSON.stringify(skin));
+                } catch {
+                    showError(
+                        roomId ? $('#room-error') : $('#home-error'),
+                        'スキンを読み込みましたが、容量制限により保存できませんでした。次回は再読み込みしてください。'
+                    );
+                }
+                render();
+            } catch (error) {
+                showError(roomId ? $('#room-error') : $('#home-error'), error.message);
+            } finally {
+                event.target.value = '';
+            }
+        });
+        clockTimer = setInterval(updateDeadlineLabel, 1000);
+        if (roomId && /^room_[a-f0-9]{12}$/.test(roomId)) {
+            $('#player-name').value = localStorage.getItem('donjara_name') || '';
+            $('#room-code').value = roomId;
+            $('#home-view').hidden = false;
+            $('#room-view').hidden = true;
+            const joinButton = document.createElement('button');
+            joinButton.className = 'button button-primary button-wide';
+            joinButton.textContent = 'このルームに参加';
+            joinButton.addEventListener('click', async () => {
+                try {
+                    await joinRoom(roomId);
+                } catch (error) {
+                    showError($('#home-error'), error.message);
+                }
+            });
+            const card = $('.lobby-card');
+            const existing = document.createElement('p');
+            existing.className = 'invite-note';
+            existing.textContent = '招待リンクから開きました。名前を入力して参加してください。';
+            card.prepend(existing);
+            card.append(joinButton);
+        } else if (roomId) {
+            roomId = null;
+            history.replaceState(null, '', '/');
+        }
+    </script>
+</body>
+</html>
